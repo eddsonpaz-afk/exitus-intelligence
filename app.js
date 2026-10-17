@@ -51,3 +51,25 @@ E('csvschools').onclick=()=>{let csv='\uFEFFinep;escola;regiao;uf;municipio;fund
 fetch('/Exitus_Escolas_Privadas_Com_Matriculas_2025.csv?base=2025v3').then(x=>{if(!x.ok)throw Error('Arquivo pendente');return x.text()}).then(t=>{SCHOOLS=parseCSV(t);refreshCities();currentData();updateMap();E('listcount').textContent=nfmt(listed.length)+' escolas encontradas no recorte'}).catch(e=>{E('listcount').textContent='Aguardando publicação da base nominal no projeto';E('schoolbody').innerHTML='<tr><td colspan="6">Não foi possível ler a base nominal. Verifique a publicação do arquivo e atualize a página.</td></tr>'});
 E('export').onclick=()=>{let rows=[['Região','UF','Escolas','500+','Somente Fundamental','Somente Médio','Ambos','Matrículas'],...view().map(x=>x.map(v=>v??''))];let csv='\uFEFF'+rows.map(row=>row.join(';')).join('\n');let a=document.createElement('a'),u=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.href=u;a.download='exitus-intelligence-uf-2025.csv';a.click();URL.revokeObjectURL(u)};
 refresh();drawMap();
+
+
+const DATA_FIELDS=['internet','bandaLarga','redesSociais','internetAprendizagem','labInformatica','biblioteca','quadra','salaProfessor','lousaDigital','multimidia','computador'];
+function updateInstitutionalPanels(){
+ const u=E('uf').value,reg=E('reg').value,city=E('city').value,stage=E('stage').value,porte=E('size').value;
+ const unsupported=!!(city||stage||porte);
+ const list=EXITUS_FEATURES.filter(x=>(!u||x[0]===u)&&(!reg||STATES.some(s=>s[1]===x[0]&&s[0]===reg)));
+ const sumX=i=>list.reduce((acc,x)=>acc+x[i],0);const total=sumX(1);
+ E('insightsScope').textContent=u?'UF: '+u:reg?'Região: '+reg:'Brasil inteiro';
+ E('insightsWarn').hidden=!unsupported;
+ const show=v=>unsupported?'—':nfmt(v);
+ E('digitalNumber').textContent=show(sumX(7));E('iInternet').textContent=show(sumX(5));E('iBroadband').textContent=show(sumX(6));
+ E('digitalBar').style.width=unsupported?'0%':(total?100*sumX(7)/total:0)+'%';
+ E('networkNumber').textContent=show(sumX(2));
+ E('networkGroups').textContent=unsupported?'—':u?nfmt(sumX(3)):'—';
+ function line(title,n,percent){return '<div class="insight-line"><span>'+title+'</span><span class="meter"><span style="width:'+(unsupported?0:percent)+'%"></span></span><strong>'+show(n)+'</strong></div>'}
+ E('infraRows').innerHTML=[['Biblioteca',10],['Laboratório de informática',9],['Quadra',11],['Sala dos professores',12]].map(([title,i])=>line(title,sumX(i),total?100*sumX(i)/total:0)).join('');
+ E('maturityRows').innerHTML=['Sem internet','Conectividade básica','Conectada','Tecnologia pedagógica'].map((name,i)=>{const v=list.reduce((s,x)=>s+x[4][i],0);return line(name,v,total?100*v/total:0)}).join('');
+}
+const prevCurrentData=currentData;currentData=function(){prevCurrentData();updateInstitutionalPanels()};
+const prevRefresh=refresh;refresh=function(){prevRefresh();updateInstitutionalPanels()};
+updateInstitutionalPanels();
