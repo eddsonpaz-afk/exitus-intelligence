@@ -65,7 +65,10 @@ function updateInstitutionalPanels(){
  E('digitalNumber').textContent=show(sumX(7));E('iInternet').textContent=show(sumX(5));E('iBroadband').textContent=show(sumX(6));
  E('digitalBar').style.width=unsupported?'0%':(total?100*sumX(7)/total:0)+'%';
  E('networkNumber').textContent=show(sumX(2));
- E('networkGroups').textContent=unsupported?'—':u?nfmt(sumX(3)):'—';
+ E('networkGroups').textContent=unsupported?'—':u?nfmt(sumX(3)):'Ver por UF';
+ E('networkPercent').textContent=unsupported?'—':(total?(100*sumX(2)/total).toLocaleString('pt-BR',{maximumFractionDigits:1})+'%':'—');
+ const rank=list.map(x=>[x[0],x[2]]).sort((a,b)=>b[1]-a[1]).slice(0,5),peak=Math.max(1,...rank.map(x=>x[1]));
+ E('networkRank').innerHTML=unsupported?'<div class="insight-note">Disponível para filtros de região e UF.</div>':rank.map(([sig,n])=>'<div class="network-line"><b>'+sig+'</b><div class="meter"><span style="width:'+(100*n/peak)+'%"></span></div><b>'+nfmt(n)+'</b></div>').join('');
  function line(title,n,percent){return '<div class="insight-line"><span>'+title+'</span><span class="meter"><span style="width:'+(unsupported?0:percent)+'%"></span></span><strong>'+show(n)+'</strong></div>'}
  E('infraRows').innerHTML=[['Biblioteca',10],['Laboratório de informática',9],['Quadra',11],['Sala dos professores',12]].map(([title,i])=>line(title,sumX(i),total?100*sumX(i)/total:0)).join('');
  E('maturityRows').innerHTML=['Sem internet','Conectividade básica','Conectada','Tecnologia pedagógica'].map((name,i)=>{const v=list.reduce((s,x)=>s+x[4][i],0);return line(name,v,total?100*v/total:0)}).join('');
