@@ -102,3 +102,36 @@ function parseNetworkCSV(t){const rows=t.replace(/^\uFEFF/,'').trim().split(/\r?
 const previousNetworkRefresh=updateInstitutionalPanels;updateInstitutionalPanels=function(){previousNetworkRefresh();renderNetworkViews()};renderNetworkViews();
 
 E('networkAllList').addEventListener('click',e=>{const b=e.target.closest('[data-inep]');if(b){E('networkDialog').close();openSchoolDetails(b.dataset.inep)}});
+
+/* Indicadores detalhados por escola - todos os recortes */
+const SCHOOL_TECH=new Map();
+let TECH_LOADED=false;
+function techFields(rows){
+ for(const line of rows.split(/\r?\n/)){if(!line||line.startsWith("inep,"))continue;const p=line.split(",");if(p.length<14)continue;SCHOOL_TECH.set(p[0],p.slice(1,14).map((v,i)=>i===12?v:(Number(v)||0)));}
+}
+function updateSchoolTech(){
+ if(!TECH_LOADED||!SCHOOLS.length)return;
+ const schoolSet=SCHOOLS.filter(chosen),total=schoolSet.length;
+ const ids={internet:0,banda:0,redes:0,aprendizagem:0,lab:0,biblioteca:0,quadra:0,professor:0,lousa:0,multimidia:0,computador:0},lv=[0,0,0,0];
+ let missing=0;
+ for(const sc of schoolSet){const a=SCHOOL_TECH.get(sc.inep);if(!a){missing++;continue}
+ for(const [i,k] of Object.keys(ids).entries())ids[k]+=a[i]||0;
+ lv[Math.max(0,Math.min(3,a[11]||0))]++;
+ }
+ E('insightsScope').textContent=E('city').value?'Município: '+E('city').value:E('uf').value?'UF: '+E('uf').value:E('reg').value?'Região: '+E('reg').value:'Brasil inteiro';
+ E('insightsWarn').hidden=missing===0;
+ if(missing)E('insightsWarn').textContent=missing+' escolas sem campos tecnológicos válidos no cruzamento. Valores abaixo consideram registros vinculados ao Censo.';
+ E('digitalNumber').textContent=nfmt(ids.redes);
+ E('iInternet').textContent=nfmt(ids.internet);E('iBroadband').textContent=nfmt(ids.banda);
+ E('digitalBar').style.width=(total?Math.min(100,100*ids.redes/total):0)+'%';
+ function row(title,value,color){return '<div class="insight-line"><span>'+title+'</span><span class="meter"><span style="width:'+(total?100*value/total:0)+'%;'+(color?'background:'+color:'')+'"></span></span><strong>'+nfmt(value)+'</strong></div>'}
+ E('infraRows').innerHTML=[['Biblioteca','biblioteca'],['Laboratório de informática','lab'],['Quadra esportiva','quadra'],['Sala dos professores','professor']].map(([title,key])=>row(title,ids[key])).join('');
+ E('maturityRows').innerHTML=['Sem internet','Conectividade básica','Conectada','Tecnologia pedagógica'].map((x,i)=>row(x,lv[i])).join('');
+}
+const previousSchoolRefresh=refresh;
+refresh=function(){previousSchoolRefresh();updateSchoolTech()};
+const previousSchoolCurrent=currentData;
+currentData=function(){previousSchoolCurrent();updateSchoolTech()};
+Promise.all(Array.from({length:25},(_,i)=>fetch('/data/features-'+String(i).padStart(2,'0')+'.csv').then(r=>{if(!r.ok)throw Error('Arquivo tecnológico indisponível: '+i);return r.text()})))
+.then(files=>{files.forEach(techFields);TECH_LOADED=SCHOOL_TECH.size===24243;if(!TECH_LOADED)throw Error('Base tecnológica incompleta: '+SCHOOL_TECH.size);updateSchoolTech()})
+.catch(err=>{E('insightsWarn').hidden=false;E('insightsWarn').textContent='Falha no carregamento dos indicadores individuais: '+err.message;});
