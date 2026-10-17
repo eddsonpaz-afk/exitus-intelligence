@@ -1,40 +1,34 @@
 
-const fmt=n=>new Intl.NumberFormat('pt-BR').format(n||0), el=id=>document.getElementById(id);
-let schools=[],filtered=[],page=0; const perPage=25, regions=['Norte','Nordeste','Centro-Oeste','Sudeste','Sul'];
-regions.forEach(v=>el('reg').add(new Option(v,v)));[...new Set(STATES.map(a=>a[1]))].sort().forEach(v=>el('uf').add(new Option(v,v)));
-function csvParse(text){text=text.replace(/^\uFEFF/,'');let rows=[],row=[],val='',quotes=false;
-for(let i=0;i<text.length;i++){let c=text[i];if(c==='"'){if(quotes&&text[i+1]==='"'){val+='"';i++}else quotes=!quotes}else if(c===','&&!quotes){row.push(val);val=''}else if((c==='\n'||c==='\r')&&!quotes){if(c==='\r'&&text[i+1]==='\n')i++;row.push(val);if(row.length>1)rows.push(row);row=[];val=''}else val+=c;}
-if(row.length||val){row.push(val);rows.push(row)}const header=rows.shift().map(x=>x.trim());
-let required=['inep','escola','regiao','uf','municipio','fund','medio','ambos','matriculas'];if(!required.every(x=>header.includes(x)))throw Error('As colunas do CSV não correspondem à base consolidada.');
-return rows.map(r=>Object.fromEntries(required.map(k=>[k,r[header.indexOf(k)]]))).filter(r=>r.inep);}
-function dbOpen(){return new Promise((res,rej)=>{let req=indexedDB.open('exitus-intelligence',1);req.onupgradeneeded=()=>req.result.createObjectStore('data');req.onsuccess=()=>res(req.result);req.onerror=()=>rej(req.error)})}
-async function dbStore(value){const db=await dbOpen();return new Promise((res,rej)=>{let tx=db.transaction('data','readwrite');tx.objectStore('data').put(value,'schools');tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})}
-async function dbLoad(){const db=await dbOpen();return new Promise((res,rej)=>{let tx=db.transaction('data','readonly'),r=tx.objectStore('data').get('schools');r.onsuccess=()=>res(r.result||[]);r.onerror=()=>rej(r.error)})}
-async function upload(event){const file=event.target.files[0];if(!file)return;el('loadstatus').textContent='Carregando e conferindo a base...';try{schools=csvParse(await file.text());await dbStore(schools);el('loadstatus').textContent=fmt(schools.length)+' escolas carregadas. Base salva no navegador.';updateCities();render()}catch(err){el('loadstatus').textContent='Erro: '+err.message}}
-el('csvupload').addEventListener('change',upload);
-function updateCities(){let reg=el('reg').value,uf=el('uf').value;let c=[...new Set(schools.filter(x=>(!reg||x.regiao===reg)&&(!uf||x.uf===uf)).map(x=>x.municipio))].sort((a,b)=>a.localeCompare(b,'pt-BR'));let previous=el('city').value;el('city').innerHTML='<option value="">Todos os municípios</option>';c.forEach(v=>el('city').add(new Option(v,v)));el('city').value=c.includes(previous)?previous:''}
-function isSize(x){let n=+x.matriculas;return el('size').value==='500'?n>=500:el('size').value==='under'?n<500&&n>=0:true}
-function isStage(x){let t=el('stage').value;return !t||(t==='fund'&&x.fund==='1')||(t==='med'&&x.medio==='1')||(t==='both'&&x.ambos==='1')}
-function selected(x){return (!el('reg').value||x.regiao===el('reg').value)&&(!el('uf').value||x.uf===el('uf').value)&&(!el('city').value||x.municipio===el('city').value)&&isStage(x)&&isSize(x)}
-function stageName(x){return x.ambos==='1'?'Fundamental + Médio':x.fund==='1'?'Só Fundamental':'Só Médio'}
-function render(){
-filtered=schools.filter(selected);let total=filtered.length,f=filtered.filter(x=>x.fund==='1').length,m=filtered.filter(x=>x.medio==='1').length,a=filtered.filter(x=>x.ambos==='1').length,big=filtered.filter(x=>+x.matriculas>=500).length;
-[['kt',total],['kf',f],['km',m],['ka',a],['k5',big]].forEach(([id,v])=>el(id).textContent=fmt(v));
-let rg=regions.map(r=>[r,filtered.filter(x=>x.regiao===r).length]).sort((a,b)=>b[1]-a[1]),max=Math.max(1,...rg.map(x=>x[1]));
-el('bars').innerHTML=rg.map(x=>'<div class="barrow"><strong>'+x[0]+'</strong><div class="track"><div class="fill" style="width:'+(x[1]/max*100)+'%"></div></div><b>'+fmt(x[1])+'</b></div>').join('');
-let af=total?100*f/total:0,am=total?100*(f+m)/total:0;el('donut').style.background='conic-gradient(#123c88 0 '+af+'%,#66aeff '+af+'% '+am+'%,#f5a201 '+am+'% 100%)';
-el('dn').textContent=fmt(total);el('lf').textContent=fmt(f);el('lm').textContent=fmt(m);el('la').textContent=fmt(a);
-let byUF={};for(let x of filtered){let k=x.uf;if(!byUF[k])byUF[k]={reg:x.regiao,uf:k,all:0,big:0,f:0,m:0,a:0,mat:0};let z=byUF[k];z.all++;z.big+=+x.matriculas>=500;z.f+=x.fund==='1';z.m+=x.medio==='1';z.a+=x.ambos==='1';z.mat+=Math.max(0,+x.matriculas)}
-let d=Object.values(byUF).sort((a,b)=>b.big-a.big);el('tbody').innerHTML=d.map(x=>'<tr><td>'+x.reg+'</td><td><strong>'+x.uf+'</strong></td><td>'+fmt(x.all)+'</td><td>'+fmt(x.big)+'</td><td>'+fmt(x.f)+'</td><td>'+fmt(x.m)+'</td><td>'+fmt(x.a)+'</td><td>'+fmt(x.mat)+'</td></tr>').join('')||'<tr><td colspan="8">Nenhuma escola no recorte.</td></tr>';
-el('summary').textContent=fmt(total)+' escolas privadas no recorte escolhido, em '+d.length+' unidades federativas. Total calculado pela mesma base da lista nominal.';
-showPage();}
-function showPage(){let q=el('searchbox').value.trim().toLocaleLowerCase('pt-BR');let matches=q?filtered.filter(x=>x.escola.toLocaleLowerCase('pt-BR').includes(q)||x.inep.includes(q)):filtered;el('listcount').textContent=fmt(matches.length)+' escolas encontradas';let pages=Math.max(1,Math.ceil(matches.length/perPage));page=Math.max(0,Math.min(page,pages-1));let slice=matches.slice(page*perPage,(page+1)*perPage);el('schoolbody').innerHTML=slice.map(x=>'<tr><td><strong>'+x.inep+'</strong></td><td>'+escapeHTML(x.escola)+'</td><td>'+x.uf+'</td><td>'+escapeHTML(x.municipio)+'</td><td>'+stageName(x)+'</td><td>'+fmt(+x.matriculas)+'</td></tr>').join('')||'<tr><td colspan="6">Nenhuma escola encontrada.</td></tr>';el('pagelabel').textContent='Página '+(page+1)+' de '+pages;el('prev').disabled=page===0;el('next').disabled=page>=pages-1}
-function escapeHTML(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-['reg','uf','city','stage','size'].forEach(id=>el(id).onchange=()=>{if(id==='reg'){el('uf').value='';updateCities()}if(id==='uf')updateCities();page=0;render()});
-el('searchbox').oninput=()=>{page=0;showPage()};
-el('prev').onclick=()=>{page--;showPage()};el('next').onclick=()=>{page++;showPage()};
-el('clear').onclick=()=>{['reg','uf','city','stage','size'].forEach(id=>el(id).value='');updateCities();page=0;render()};
-function exportCSV(rows,name){let csv='\uFEFF'+rows.map(x=>x.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(';')).join('\n');let a=document.createElement('a'),url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
-el('csvschools').onclick=()=>exportCSV([['INEP','Escola','Região','UF','Município','Etapa','Matrículas'],...filtered.map(x=>[x.inep,x.escola,x.regiao,x.uf,x.municipio,stageName(x),x.matriculas])],'exitus-escolas-filtradas.csv');
-el('export').onclick=()=>{let rows=[['Região','UF','Escolas','500+','Só Fundamental','Só Médio','Ambas','Matrículas']];for(let x of el('tbody').rows){if(x.cells.length===8)rows.push([...x.cells].map(c=>c.innerText))}exportCSV(rows,'exitus-resumo-estados.csv')};
-dbLoad().then(data=>{schools=data;el('loadstatus').textContent=schools.length?fmt(schools.length)+' escolas carregadas automaticamente do armazenamento local.':'Baixe a base consolidada e importe o CSV uma única vez.';updateCities();render()}).catch(()=>{el('loadstatus').textContent='Importe o CSV consolidado para iniciar.';render()});
+const fmt=n=>new Intl.NumberFormat('pt-BR').format(n||0);
+const E=id=>document.getElementById(id);
+const REGIONS=['Norte','Nordeste','Centro-Oeste','Sudeste','Sul'];
+REGIONS.forEach(r=>E('reg').add(new Option(r,r)));
+[...new Set(STATES.map(x=>x[1]))].sort().forEach(uf=>E('uf').add(new Option(uf,uf)));
+const ABBR={'Acre':'AC','Alagoas':'AL','Amapá':'AP','Amazonas':'AM','Bahia':'BA','Ceará':'CE','Distrito Federal':'DF','Espírito Santo':'ES','Goiás':'GO','Maranhão':'MA','Mato Grosso':'MT','Mato Grosso do Sul':'MS','Minas Gerais':'MG','Pará':'PA','Paraíba':'PB','Paraná':'PR','Pernambuco':'PE','Piauí':'PI','Rio de Janeiro':'RJ','Rio Grande do Norte':'RN','Rio Grande do Sul':'RS','Rondônia':'RO','Roraima':'RR','Santa Catarina':'SC','São Paulo':'SP','Sergipe':'SE','Tocantins':'TO'};
+let hovered='',geoShapes=[];
+function view(){const reg=E('reg').value,uf=E('uf').value,stage=E('stage').value,size=E('size').value;return STATES.filter(x=>(!reg||x[0]===reg)&&(!uf||x[1]===uf)).map(x=>{
+ let a=x.slice();if(stage){a[2]=a[stage==='fund'?3:stage==='med'?4:5];a[3]=stage==='fund'?a[3]:0;a[4]=stage==='med'?a[4]:0;a[5]=stage==='both'?a[5]:0;a[6]=null;a[7]=null;}if(size){if(stage){a[2]=null;a[3]=null;a[4]=null;a[5]=null;}else{a[2]=size==='500'?x[6]:x[2]-x[6];a[3]=null;a[4]=null;a[5]=null;a[6]=size==='500'?x[6]:0;}a[7]=null;}return a;});}
+function sum(d,i){return d.reduce((t,x)=>t+(x[i]||0),0)}function showValue(v){return v==null?'—':fmt(v)}
+function refresh(){let d=view(),total=sum(d,2),f=sum(d,3),m=sum(d,4),b=sum(d,5),big=sum(d,6),stage=E('stage').value,size=E('size').value,compound=!!stage&&!!size;
+E('kt').textContent=compound?'—':fmt(total);E('kf').textContent=size?'—':fmt(f);E('km').textContent=size?'—':fmt(m);E('ka').textContent=size?'—':fmt(b);E('k5').textContent=stage?'—':fmt(big);
+const regs=REGIONS.map(r=>[r,d.filter(x=>x[0]===r).reduce((n,x)=>n+(x[2]||0),0)]),max=Math.max(...regs.map(x=>x[1]),1);
+const lines=regs.map(([name,n])=>'<div class="barrow"><strong>'+name+'</strong><div class="track"><div class="fill" style="width:'+n/max*100+'%"></div></div><b>'+fmt(n)+'</b></div>').join('');
+E('bars').innerHTML=lines;E('regionBars').innerHTML=lines;
+let p=total?f/total*100:0,q=total?(f+m)/total*100:0;E('donut').style.background=size?'#e8f2fa':'conic-gradient(#123c88 0 '+p+'%,#66aeff '+p+'% '+q+'%,#f5a201 '+q+'% 100%)';E('dn').textContent=compound?'—':fmt(total);E('lf').textContent=size?'—':fmt(f);E('lm').textContent=size?'—':fmt(m);E('la').textContent=size?'—':fmt(b);
+E('tbody').innerHTML=d.sort((a,b)=>(b[2]||0)-(a[2]||0)).map(a=>'<tr><td>'+a[0]+'</td><td><strong>'+a[1]+'</strong></td><td>'+showValue(a[2])+'</td><td>'+showValue(a[6])+'</td><td>'+((size||compound)?'—':showValue(a[3]))+'</td><td>'+((size||compound)?'—':showValue(a[4]))+'</td><td>'+((size||compound)?'—':showValue(a[5]))+'</td><td>'+showValue(a[7])+'</td></tr>').join('')||'<tr><td colspan="8">Nenhuma escola no recorte.</td></tr>';
+E('summary').textContent=compound?'A base agregada não permite cruzar simultaneamente porte e etapa; não inventamos esse número.':'Escolas privadas e matrículas agregadas, conforme o recorte selecionado.';
+updateMap();}
+function updateMap(){let selected=E('uf').value;for(let el of geoShapes){el.classList.toggle('selected',el.dataset.uf===selected);el.classList.toggle('hover',el.dataset.uf===hovered&&el.dataset.uf!==selected)}}
+function pointsToPath(geometry){let rings=[];if(geometry.type==='Polygon')rings=geometry.coordinates;else if(geometry.type==='MultiPolygon')rings=geometry.coordinates.flat();const project=([lon,lat])=>[((lon+75)*10.4+25).toFixed(1),((6-lat)*10.4+16).toFixed(1)];return rings.map(r=>r.map((p,i)=>{let [x,y]=project(p);return(i?'L':'M')+x+' '+y}).join('')+'Z').join('');}
+async function drawMap(){const map=E('brmap');let urls=['https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/brazil-states.geojson','https://cdn.jsdelivr.net/gh/codeforamerica/click_that_hood@master/public/data/brazil-states.geojson'];
+let data;for(let url of urls){try{let r=await fetch(url);if(r.ok){data=await r.json();break}}catch(e){}}
+if(!data){map.innerHTML='<text x="20" y="180" fill="#1b3554">Não foi possível carregar o mapa.</text>';return;}
+for(let f of data.features){let name=f.properties.name||f.properties.nome||'',uf=ABBR[name]||f.properties.sigla||f.properties.abbrev;if(!uf)continue;let path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d',pointsToPath(f.geometry));path.dataset.uf=uf;path.onmouseenter=()=>{hovered=uf;let row=STATES.find(x=>x[1]===uf);E('maptip').style.display='block';E('maptip').textContent=uf+' · '+fmt(row?.[2])+' escolas privadas';updateMap()};path.onmouseleave=()=>{hovered='';E('maptip').style.display='none';updateMap()};path.onclick=()=>{E('uf').value=E('uf').value===uf?'':uf;E('reg').value='';refresh()};map.appendChild(path);geoShapes.push(path)}
+updateMap();}
+['reg','uf','stage','size'].forEach(id=>E(id).addEventListener('change',()=>{if(id==='reg')E('uf').value='';refresh()}));
+E('clear').onclick=()=>{for(let id of ['reg','uf','stage','size'])E(id).value='';refresh()};
+E('city').disabled=true;E('city').title='Disponível após integração da lista nominal integral';
+E('schoolbody').innerHTML='<tr><td colspan="6">Os nomes das escolas ainda não foram incorporados ao servidor. A lista completa será liberada após a carga integral dos registros.</td></tr>';E('listcount').textContent='Integração da lista nominal em andamento';
+E('csvschools').disabled=true;E('searchbox').disabled=true;E('prev').disabled=true;E('next').disabled=true;
+E('export').onclick=()=>{let rows=[['Região','UF','Escolas','500+','Somente Fundamental','Somente Médio','Ambos','Matrículas'],...view().map(x=>x.map(v=>v??''))];let csv='\uFEFF'+rows.map(row=>row.join(';')).join('\n');let a=document.createElement('a'),u=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.href=u;a.download='exitus-intelligence-uf-2025.csv';a.click();URL.revokeObjectURL(u)};
+refresh();drawMap();
